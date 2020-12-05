@@ -3,12 +3,10 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Abstractions;
 using Microsoft.AspNetCore.Mvc.Infrastructure;
-using Microsoft.AspNetCore.Mvc.Razor.Compilation;
 using Microsoft.AspNetCore.Mvc.Routing;
 using Microsoft.AspNetCore.Routing;
 
@@ -18,27 +16,19 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages.Infrastructure
     {
         private readonly ActionEndpointFactory _endpointFactory;
         private readonly OrderedEndpointsSequenceProvider _orderSequence;
-        private readonly DefaultPageLoader _pageLoader;
 
         public PageActionEndpointDataSource(
             PageActionEndpointDataSourceIdProvider dataSourceIdProvider,
             IActionDescriptorCollectionProvider actions,
             ActionEndpointFactory endpointFactory,
-            PageLoader pageLoader,
             OrderedEndpointsSequenceProvider orderedEndpoints)
             : base(actions)
         {
             DataSourceId = dataSourceIdProvider.CreateId();
             _endpointFactory = endpointFactory;
             _orderSequence = orderedEndpoints;
-            DefaultBuilder = new PageActionEndpointConventionBuilder(Lock, Conventions);
 
-            // If we haven't replaced the default view compiler then we can load the page directly
-            // synchronously and in memory
-            if (pageLoader is DefaultPageLoader pl && pl.Compiler is DefaultViewCompiler)
-            {
-                _pageLoader = pl;
-            }
+            DefaultBuilder = new PageActionEndpointConventionBuilder(Lock, Conventions);
 
             // IMPORTANT: this needs to be the last thing we do in the constructor.
             // Change notifications can happen immediately!
@@ -57,28 +47,12 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages.Infrastructure
         {
             var endpoints = new List<Endpoint>();
             var routeNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
             for (var i = 0; i < actions.Count; i++)
             {
-                if (actions[i] is PageActionDescriptor action)
+                if (actions[i] is PageActionDescriptor actionDescriptor)
                 {
-                    if (_pageLoader != null)
-                    {
-                        // The default view compiler does a dictionary lookup so we can rely on that always completing synchronously
-                        // this lets us avoid lots of per-request work as the compiled page is already available at
-                        // startup for this page so we can base the endpoint on that directly.
-                        var compiledTask = _pageLoader.LoadWithoutEndpoint(action);
-
-                        // This should always complete synchronously
-                        Debug.Assert(compiledTask.IsCompleted);
-
-                        // Add the compiled descriptor directly
-                        var compiledActionDescriptor = compiledTask.GetAwaiter().GetResult();
-                        _endpointFactory.AddEndpoints(endpoints, routeNames, compiledActionDescriptor, Array.Empty<ConventionalRouteEntry>(), conventions, CreateInertEndpoints);
-                    }
-                    else
-                    {
-                        _endpointFactory.AddEndpoints(endpoints, routeNames, action, Array.Empty<ConventionalRouteEntry>(), conventions, CreateInertEndpoints);
-                    }
+                    _endpointFactory.AddEndpoints(endpoints, routeNames, actionDescriptor, Array.Empty<ConventionalRouteEntry>(), conventions, CreateInertEndpoints);
                 }
             }
 
